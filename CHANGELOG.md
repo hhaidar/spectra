@@ -12,3 +12,4 @@
 - Full screen (F11, or double-click the preview; Esc leaves), shortcuts to record (Ctrl+R), take a screenshot (Ctrl+S) and switch Fit/1:1 (Ctrl+1), and the window opens where it was left.
 - A source that's opening shows the brand mark breathing, a failed one offers Try again, a screenshot flashes the preview, and the source menus pick up devices plugged in since.
 - A captured window that closes now says so, instead of freezing on its last frame.
+- The app icon is sharp at every size, from the 16-pixel taskbar icon to the 1024-pixel macOS one, and Spectra ships as `Spectra.app` on macOS and with a desktop entry and icons on Linux.

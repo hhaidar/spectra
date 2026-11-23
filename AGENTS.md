@@ -15,9 +15,14 @@ capture cards and cameras. It is a Rust app built on GPUI.
   preview pipeline.
 - `src/encoder.rs`, `src/recorder.rs`: recording through ffmpeg.
 - `brand.png`: the brand sheet. `cargo run --release --example brand`
-  regenerates everything cut from it (the Windows icon, the Store tiles, the
-  README banner); `build.rs` embeds the icon in the Windows executable.
+  regenerates every brand asset: the app icon, which it draws in the sheet's
+  colours (the Windows .ico, the Store tiles, the macOS .icns, the Linux
+  hicolor icons), and the README banner, cut from the sheet. `build.rs` embeds
+  the icon in the Windows executable.
 - `packaging/windows`: the Microsoft Store package (see its README).
+- `packaging/macos`: `Spectra.app` (`build-app.sh`). `packaging/linux`: a
+  tarball with the desktop entry and icons (`package.sh`). Both name the app
+  `io.github.hhaidar.Spectra`, as `APP_ID` in `src/main.rs` does.
 
 ## Checks
 

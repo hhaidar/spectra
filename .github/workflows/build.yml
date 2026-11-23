@@ -50,6 +50,7 @@ jobs:
           libpipewire-0.3-dev libspa-0.2-dev
           libegl1-mesa-dev libgbm-dev libdrm-dev libvulkan-dev
           libasound2-dev libssl-dev libzstd-dev
+          desktop-file-utils
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
@@ -74,6 +75,28 @@ jobs:
         with:
           name: spectra-${{ matrix.name }}
           path: target/release/${{ matrix.binary }}
+          if-no-files-found: error
+      # Spectra.app, with its icon (packaging/macos).
+      - name: App bundle
+        if: runner.os == 'macOS'
+        run: packaging/macos/build-app.sh --skip-build
+      - if: runner.os == 'macOS'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spectra-macos-app
+          path: target/release/Spectra-macos.zip
+          if-no-files-found: error
+      # The binary with its desktop entry and icons (packaging/linux).
+      - name: Linux package
+        if: runner.os == 'Linux'
+        run: |
+          desktop-file-validate packaging/linux/share/applications/*.desktop
+          packaging/linux/package.sh --skip-build
+      - if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spectra-linux-package
+          path: target/release/spectra-linux.tar.gz
           if-no-files-found: error
       # The Microsoft Store package for this architecture (packaging/windows).
       # Partner Center's identity comes from the repository's variables.

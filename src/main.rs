@@ -51,6 +51,8 @@ const SIDEBAR_WIDTH: f32 = 320.;
 const SIDEBAR_INNER: f32 = SIDEBAR_WIDTH - 40.;
 const CONTROL_WIDTH: f32 = 160.;
 const TITLEBAR_HEIGHT: f32 = 36.;
+/// The app's id on Linux, where it names the desktop entry and icon (`packaging/linux`).
+const APP_ID: &str = "io.github.hhaidar.Spectra";
 /// Windows and macOS get Spectra's own dark title bar; Linux keeps its native one.
 const CUSTOM_TITLEBAR: bool = cfg!(any(windows, target_os = "macos"));
 const FPS_CHOICES: [u32; 4] = [24, 30, 60, 120];
@@ -1555,6 +1557,8 @@ fn main() {
                     traffic_light_position: Some(point(px(14.), px(12.))),
                 }),
                 window_min_size: Some(size(px(900.), px(560.))),
+                // Matches the desktop entry on Linux, which gives the window its icon.
+                app_id: Some(APP_ID.into()),
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| Spectra::new(window, cx)),

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Spectra
+GenericName=Video Capture
+Comment=Preview, record and screenshot your desktop, a window, a capture card or a camera
+Exec=spectra
+Icon=io.github.hhaidar.Spectra
+StartupWMClass=io.github.hhaidar.Spectra
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=capture;record;screen;screenshot;camera;
