@@ -1529,6 +1529,44 @@ impl Render for Spectra {
     }
 }
 
+/// GPUI gives its window class one icon, at the system's default size, which
+/// Windows then resizes for the taskbar and Alt+Tab, blurring it on scaled
+/// displays. Hand the window its small and large icons at its own DPI instead,
+/// picked from the sizes in the embedded .ico.
+#[cfg(windows)]
+fn set_window_icons(window: &Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows::Win32::{
+        Foundation::{HWND, LPARAM, WPARAM},
+        System::LibraryLoader::GetModuleHandleW,
+        UI::{
+            HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
+            WindowsAndMessaging::{
+                ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXICON, SM_CXSMICON, SendMessageW,
+                WM_SETICON,
+            },
+        },
+    };
+
+    let Ok(RawWindowHandle::Win32(handle)) = HasWindowHandle::window_handle(window).map(|h| h.as_raw()) else {
+        return;
+    };
+    let hwnd = HWND(handle.hwnd.get() as _);
+    unsafe {
+        let Ok(module) = GetModuleHandleW(None) else { return };
+        let dpi = GetDpiForWindow(hwnd);
+        for (kind, metric) in [(ICON_SMALL, SM_CXSMICON), (ICON_BIG, SM_CXICON)] {
+            let size = GetSystemMetricsForDpi(metric, dpi);
+            // Icon resource 1 (build.rs). Not shared, so loaded at this exact
+            // size; it lives as long as the window, which is the whole run.
+            let resource = windows::core::PCWSTR(1 as _);
+            if let Ok(icon) = LoadImageW(Some(module.into()), resource, IMAGE_ICON, size, size, LR_DEFAULTCOLOR) {
+                SendMessageW(hwnd, WM_SETICON, Some(WPARAM(kind as usize)), Some(LPARAM(icon.0 as isize)));
+            }
+        }
+    }
+}
+
 fn main() {
     Application::new().run(|cx: &mut App| {
         cx.bind_keys([
@@ -1561,7 +1599,11 @@ fn main() {
                 app_id: Some(APP_ID.into()),
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| Spectra::new(window, cx)),
+            |window, cx| {
+                #[cfg(windows)]
+                set_window_icons(window);
+                cx.new(|cx| Spectra::new(window, cx))
+            },
         )
         .expect("failed to open window");
         cx.on_window_closed(|cx| cx.quit()).detach();
