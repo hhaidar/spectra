@@ -133,8 +133,19 @@ fn list_windows() -> Result<Vec<SourceInfo>> {
 // DirectShow devices (capture cards & cameras) via ffmpeg
 // ---------------------------------------------------------------------------
 
+/// ffmpeg shipped next to Spectra (as in the Microsoft Store package) if
+/// there is one, otherwise the one on `PATH`.
+fn ffmpeg_path() -> std::path::PathBuf {
+    let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join(name)))
+        .filter(|bundled| bundled.is_file())
+        .unwrap_or_else(|| name.into())
+}
+
 pub(crate) fn ffmpeg_command() -> Command {
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = Command::new(ffmpeg_path());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

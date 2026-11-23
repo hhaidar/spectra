@@ -12,4 +12,6 @@ Needs [Rust](https://rustup.rs) and, for recording and capture devices, [ffmpeg]
 cargo run --release
 ```
 
+The Microsoft Store package is built from [`packaging/windows`](packaging/windows).
+
 FSR 1.0 shaders in `src/shaders` are © AMD, [MIT licence](src/shaders/LICENSE-FSR.txt).

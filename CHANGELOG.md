@@ -8,3 +8,4 @@
 - Spectra remembers the last source and its settings.
 - Builds for Linux, macOS, Windows x64 and Windows ARM.
 - Spectra's icon, colours and title-bar mark follow the brand.
+- A Microsoft Store package for Windows x64 and ARM64, which can ship its own ffmpeg.

@@ -17,6 +17,7 @@ capture cards and cameras. It is a Rust app built on GPUI.
 - `brand.png`: the brand sheet. `cargo run --release --example brand`
   regenerates everything cut from it (the Windows icon, the Store tiles, the
   README banner); `build.rs` embeds the icon in the Windows executable.
+- `packaging/windows`: the Microsoft Store package (see its README).
 
 ## Checks
 
