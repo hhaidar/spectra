@@ -54,3 +54,7 @@ plainly, not claimed as checked.
 - On Windows, run `cargo` from PowerShell: Git Bash's `link` can shadow
   MSVC's linker.
 - ffmpeg on `PATH` is needed for recording and for capture cards and cameras.
+- `Cargo.lock` holds `libc` at 0.2.189 (and `mio` at 1.2.4, the last release
+  that accepts it): `xattr` 0.2.3, which GPUI's HTTP client pulls in, uses
+  `libc::ENOATTR`, gone from Linux since libc 0.2.190. A plain `cargo update`
+  breaks the Linux build until GPUI moves off `xattr` 0.2.
