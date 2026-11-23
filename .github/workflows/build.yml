@@ -1,0 +1,77 @@
+name: Build
+
+# Lints, tests and builds Spectra on every platform it ships for, and keeps
+# each build's binary as an artifact.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a pull request replaces its running checks; master runs them all.
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+# Actions are pinned to commits.
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-latest, binary: spectra }
+          - { name: macos-arm64, os: macos-latest, binary: spectra }
+          - { name: windows-x86_64, os: windows-latest, binary: spectra.exe }
+          - { name: windows-arm64, os: windows-11-arm, binary: spectra.exe }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # GPUI (X11, Wayland, fonts) and xcap (XCB, PipeWire, D-Bus) link these.
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          pkg-config clang libclang-dev
+          libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev
+          libx11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxrandr-dev
+          libfontconfig1-dev libfreetype-dev libdbus-1-dev
+          libpipewire-0.3-dev libspa-0.2-dev
+          libegl1-mesa-dev libgbm-dev libdrm-dev libvulkan-dev
+          libasound2-dev libssl-dev libzstd-dev
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ matrix.name }}
+          # Pull requests reuse master's cache without writing their own.
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - name: Format
+        if: matrix.name == 'linux-x86_64'
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --release --all-targets --locked -- -D warnings
+      # Unit tests; the ones that need a display, GPU, ffmpeg or a capture
+      # device are #[ignore]d and run locally.
+      - name: Test
+        run: cargo test --release --locked
+      - name: Build
+        run: cargo build --release --locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spectra-${{ matrix.name }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error
