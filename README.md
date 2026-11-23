@@ -1,4 +1,9 @@
-<p align="center"><img src="docs/banner.png" alt="Spectra" width="100%"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo-light.png" alt="Spectra" width="360">
+  </picture>
+</p>
 
 Preview, record and screenshot your desktop, a window, a capture card or a camera.
 

@@ -1,6 +1,6 @@
-//! Regenerates every brand asset: the app icon for Windows, macOS and Linux,
-//! the Microsoft Store tiles, and the README banner cut from the brand sheet
-//! (`brand.png`).
+//! Regenerates every brand asset from the brand sheet (`brand.png`): the app
+//! icon for Windows, macOS and Linux, the Microsoft Store tiles, and the
+//! README's logo.
 //!
 //! ```
 //! cargo run --release --example brand
@@ -14,12 +14,15 @@
 
 use std::{fs, io::Cursor, path::Path};
 
-use xcap::image::{self, ImageFormat, Rgba, RgbaImage, imageops::FilterType};
+use xcap::image::{self, ImageFormat, Rgba, RgbaImage};
 
 /// The app's id on Linux (its desktop entry and icon name) and macOS (its bundle).
 const APP_ID: &str = "io.github.hhaidar.Spectra";
-/// The hero banner across the top of the sheet.
-const BANNER: (u32, u32, u32, u32) = (0, 0, 1536, 474);
+/// The wordmark ("Spectra") in the sheet's hero, and the centre and width of
+/// the mark beside it.
+const WORDMARK: (u32, u32, u32, u32) = (826, 200, 1358, 340);
+const MARK_CENTRE: (f32, f32) = (703.5, 259.5);
+const MARK_WIDTH: f32 = 132.0;
 
 fn main() {
     // Windows: the .exe, window and taskbar icon, at every size Windows asks for.
@@ -69,11 +72,10 @@ fn main() {
         save(&icon(size, Shape::Linux), &path);
     }
 
-    // README banner.
+    // README logo: one for GitHub's dark theme, one for its light theme.
     let sheet = image::open("brand.png").expect("brand.png in the repository root").to_rgba8();
-    let (x, y, w, h) = BANNER;
-    let banner = image::imageops::crop_imm(&sheet, x, y, w, h).to_image();
-    save(&image::imageops::resize(&banner, 1280, 1280 * h / w, FilterType::Lanczos3), "docs/banner.png");
+    save(&logo(&sheet, 0xf4eff9, 1.0), "docs/logo-dark.png");
+    save(&logo(&sheet, 0x17111d, 0.35), "docs/logo-light.png");
 
     println!("brand assets written");
 }
@@ -322,6 +324,61 @@ fn screen(a: Rgb, b: Rgb, t: f32) -> Rgb {
 
 fn rgb(hex: u32) -> Rgb {
     [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff].map(|c| c as f32 / 255.0)
+}
+
+/// The mark beside the sheet's wordmark, on transparency, the letters in
+/// `text` and the mark's glow at `glow`. The letters are lifted from the
+/// sheet's hero by their green channel: they're white, and everything behind
+/// them is violet, crimson or near-black, with almost no green.
+fn logo(sheet: &RgbaImage, text: u32, glow: f32) -> RgbaImage {
+    // The canvas, in sheet coordinates: the lockup with room for the glow.
+    let pad = 36;
+    let (x0, y0) = (MARK_CENTRE.0 as u32 - MARK_WIDTH as u32 / 2 - pad, WORDMARK.1 - pad);
+    let (x1, y1) = (WORDMARK.2 + pad, WORDMARK.3 + pad);
+    let side = MARK_WIDTH / 0.63;
+    let body = Body {
+        x: MARK_CENTRE.0 - side / 2.0 - x0 as f32,
+        y: MARK_CENTRE.1 - side / 2.0 - y0 as f32,
+        side,
+        radius: 0.0,
+    };
+    let mark = Mark::new(&body);
+    let g = side * 0.03;
+    let text = rgb(text);
+
+    let mut image = RgbaImage::new(x1 - x0, y1 - y0);
+    for (x, y, out) in image.enumerate_pixels_mut() {
+        let p = (x as f32 + 0.5, y as f32 + 0.5);
+        let (bracket_d, dot_d) = (mark.bracket_distance(p), mark.dot_distance(p));
+        let (bracket_c, dot_c) = (mark.bracket_color(p), mark.dot_color(p));
+        let (sx, sy) = (x + x0, y + y0);
+        let (wx0, wy0, wx1, wy1) = WORDMARK;
+        let letters = if (wx0..wx1).contains(&sx) && (wy0..wy1).contains(&sy) {
+            ((sheet.get_pixel(sx, sy)[1] as f32 - 12.0) / 220.0).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // Painted back to front, premultiplied.
+        let mut c = [0.0; 3];
+        let mut a = 0.0;
+        for (colour, alpha) in [
+            (bracket_c, (-bracket_d.max(0.0) / g).exp() * 0.5 * glow),
+            (dot_c, (-dot_d.max(0.0) / (g * 1.6)).exp() * 0.65 * glow),
+            (bracket_c, cover(bracket_d)),
+            (dot_c, cover(dot_d)),
+            (text, letters),
+        ] {
+            c = [0, 1, 2].map(|i| colour[i] * alpha + c[i] * (1.0 - alpha));
+            a = alpha + a * (1.0 - alpha);
+        }
+        let to_byte = |f: f32| (f.clamp(0.0, 1.0) * 255.0).round() as u8;
+        *out = if a > 0.0 {
+            Rgba([to_byte(c[0] / a), to_byte(c[1] / a), to_byte(c[2] / a), to_byte(a)])
+        } else {
+            Rgba([0; 4])
+        };
+    }
+    image
 }
 
 /// The icon centred on a transparent `w`×`h` tile, two-thirds of its height.
