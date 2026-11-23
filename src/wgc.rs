@@ -31,6 +31,7 @@ use windows::{
                 Graphics::Capture::IGraphicsCaptureItemInterop,
             },
         },
+        UI::WindowsAndMessaging::IsWindow,
     },
     core::{IInspectable, Interface, factory},
 };
@@ -47,6 +48,11 @@ pub struct WgcCapture {
     device: IDirect3DDevice,
     pool: Direct3D11CaptureFramePool,
     session: GraphicsCaptureSession,
+    /// Kept alive so its Closed event fires when the window closes.
+    _item: GraphicsCaptureItem,
+    /// For windows: checked when frames stop, since Closed isn't always raised
+    /// (e.g. when the window's process is killed).
+    window: Option<HWND>,
     pool_size: SizeInt32,
     /// Set by the FrameArrived callback.
     signal: Arc<(Mutex<bool>, Condvar)>,
@@ -71,6 +77,10 @@ impl Drop for WgcFrame {
 impl WgcCapture {
     pub fn new(target: Target, d3d: &ID3D11Device) -> Result<Self> {
         let interop = factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
+        let window = match &target {
+            Target::Window(id) => Some(HWND(*id as usize as *mut _)),
+            Target::Monitor(_) => None,
+        };
         let item: GraphicsCaptureItem = unsafe {
             match target {
                 Target::Monitor(id) => interop.CreateForMonitor(HMONITOR(id as usize as *mut _)),
@@ -109,7 +119,7 @@ impl WgcCapture {
         let _ = session.SetIsCursorCaptureEnabled(true);
         session.StartCapture()?;
 
-        Ok(Self { device, pool, session, pool_size, signal, closed })
+        Ok(Self { device, pool, session, _item: item, window, pool_size, signal, closed })
     }
 
     /// Waits up to `timeout` for a new frame and returns the newest one,
@@ -133,7 +143,14 @@ impl WgcCapture {
                 let _ = old.Close();
             }
         }
-        let Some(frame) = newest else { return Ok(None) };
+        let Some(frame) = newest else {
+            if let Some(hwnd) = self.window
+                && !unsafe { IsWindow(Some(hwnd)) }.as_bool()
+            {
+                bail!("the window was closed");
+            }
+            return Ok(None);
+        };
 
         let content = frame.ContentSize()?;
         if content.Width != self.pool_size.Width || content.Height != self.pool_size.Height {
