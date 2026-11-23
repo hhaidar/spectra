@@ -336,3 +336,41 @@ pub fn ghost_button(
             },
         )
 }
+
+/// The Spectra mark from the brand sheet: viewfinder brackets around a dot,
+/// violet-to-red, drawn as shapes so it's sharp at any size.
+pub fn brand_mark(size: f32) -> Div {
+    let stroke = px((size * 0.12).max(1.5));
+    let arm = px(size * 0.34);
+    let corner = px(size * 0.14);
+    let bracket = |left: bool, top: bool, hex: u32| {
+        div()
+            .absolute()
+            .size(arm)
+            .border_color(color(hex))
+            .map(|d| if left { d.left_0().border_l(stroke) } else { d.right_0().border_r(stroke) })
+            .map(|d| if top { d.top_0().border_t(stroke) } else { d.bottom_0().border_b(stroke) })
+            .map(|d| match (left, top) {
+                (true, true) => d.rounded_tl(corner),
+                (false, true) => d.rounded_tr(corner),
+                (true, false) => d.rounded_bl(corner),
+                (false, false) => d.rounded_br(corner),
+            })
+    };
+    let dot = size * 0.34;
+    div()
+        .relative()
+        .flex_none()
+        .size(px(size))
+        .child(bracket(true, true, theme::MAGENTA))
+        .child(bracket(false, true, theme::PINK))
+        .child(bracket(true, false, theme::MAGENTA))
+        .child(bracket(false, false, theme::RED))
+        .child(div().absolute().size(px(dot)).left(px((size - dot) / 2.)).top(px((size - dot) / 2.)).rounded_full().bg(
+            gpui::linear_gradient(
+                135.,
+                gpui::linear_color_stop(color(theme::MAGENTA), 0.),
+                gpui::linear_color_stop(color(theme::RED), 1.),
+            ),
+        ))
+}

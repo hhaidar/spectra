@@ -41,7 +41,9 @@ use session::{ModeRequest, Session, SourceState};
 use settings::{SavedSource, Settings, Sharpening};
 use source::{DeviceMode, SourceId, SourceInfo, SourceKind};
 use theme::{color, icon};
-use widgets::{Dropdown, DropdownItem, Tooltip, ghost_button, icon_button, note, section_title, setting_row};
+use widgets::{
+    Dropdown, DropdownItem, Tooltip, brand_mark, ghost_button, icon_button, note, section_title, setting_row,
+};
 use xcap::image::{Frame, RgbaImage};
 
 const SIDEBAR_WIDTH: f32 = 320.;
@@ -583,17 +585,7 @@ impl Spectra {
                     .gap_2()
                     .map(|this| if cfg!(target_os = "macos") { this.pl(px(80.)) } else { this.pl_3() })
                     .window_control_area(WindowControlArea::Drag)
-                    .child(
-                        div()
-                            .size(px(14.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .border_2()
-                            .border_color(theme::accent())
-                            .child(div().size(px(4.)).rounded_full().bg(theme::accent())),
-                    )
+                    .child(brand_mark(16.))
                     .child(
                         div()
                             .text_sm()

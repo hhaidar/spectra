@@ -14,6 +14,9 @@ capture cards and cameras. It is a Rust app built on GPUI.
 - `src/screen.rs`, `src/cpu.rs` (Linux, macOS): xcap capture and the CPU
   preview pipeline.
 - `src/encoder.rs`, `src/recorder.rs`: recording through ffmpeg.
+- `brand.png`: the brand sheet. `cargo run --release --example brand`
+  regenerates everything cut from it (the Windows icon, the Store tiles, the
+  README banner); `build.rs` embeds the icon in the Windows executable.
 
 ## Checks
 

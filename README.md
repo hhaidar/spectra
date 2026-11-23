@@ -1,4 +1,4 @@
-# Spectra
+<p align="center"><img src="docs/banner.png" alt="Spectra" width="100%"></p>
 
 Preview, record and screenshot your desktop, a window, a capture card or a camera.
 

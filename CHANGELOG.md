@@ -7,3 +7,4 @@
 - Recording in H.264, HEVC or AV1 on the GPU encoder, and full-resolution PNG screenshots.
 - Spectra remembers the last source and its settings.
 - Builds for Linux, macOS, Windows x64 and Windows ARM.
+- Spectra's icon, colours and title-bar mark follow the brand.
