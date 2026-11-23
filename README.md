@@ -7,7 +7,7 @@
 
 Preview, record and screenshot your desktop, a window, a capture card or a camera.
 
-![Spectra previewing a test pattern, upscaled with FSR](docs/screenshot.png)
+![Spectra previewing a window, upscaled with FSR](docs/screenshot.png)
 
 ## Run
 
