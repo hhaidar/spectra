@@ -1,0 +1,22 @@
+[package]
+name = "spectra"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+futures = "0.3"
+gpui = "0.2.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+xcap = "0.9.10"
+
+# Windows Graphics Capture and the Direct3D 11 preview pipeline.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Foundation", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_WinRT", "Win32_System_WinRT_Direct3D11", "Win32_System_WinRT_Graphics_Capture", "Win32_System_Performance"] }
+
+# Compile GPUI's Metal shaders when the app starts: builds then don't need
+# Xcode's separately-installed Metal toolchain.
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
