@@ -30,7 +30,7 @@ impl Processor {
         let (dst, method, _) = plan(size, scaling, false);
         let bgra = match method {
             Method::Downscale => downscale(rgba, size, dst),
-            _ => rgba.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], 255]).collect(),
+            _ => rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect(),
         };
         self.newest = Some((rgba.to_vec(), size));
         let (width, height) = if method == Method::Downscale { dst } else { size };
@@ -74,7 +74,7 @@ fn downscale(rgba: &[u8], src: (u32, u32), dst: (u32, u32)) -> Vec<u8> {
         for &(x0, x1) in &columns {
             let mut sum = [0f32; 3];
             for row in y0..y1 {
-                for px in rgba[(row * sw + x0) * 4..(row * sw + x1) * 4].chunks_exact(4) {
+                for px in rgba[(row * sw + x0) * 4..(row * sw + x1) * 4].as_chunks::<4>().0 {
                     sum[0] += to_linear[px[0] as usize];
                     sum[1] += to_linear[px[1] as usize];
                     sum[2] += to_linear[px[2] as usize];
