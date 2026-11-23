@@ -48,6 +48,8 @@ plainly, not claimed as checked.
   `docs: …`. The body says why, and anything a reviewer should know.
 - Never commit build output (`target/`), keys, `.env` files, local data, or
   files git ignores.
+- No `Co-Authored-By` trailers, and no mention of AI tools, in commits or
+  pull requests.
 
 ## Platform notes
 
