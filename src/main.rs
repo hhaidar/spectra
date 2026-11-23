@@ -31,14 +31,15 @@ use std::{
 use encoder::{Capabilities, Codec, Quality};
 use futures::{StreamExt, channel::mpsc::UnboundedSender};
 use gpui::{
-    App, Application, Bounds, Context, CursorStyle, FontWeight, MouseButton, ObjectFit, PathPromptOptions, Pixels,
-    Point, RenderImage, ScrollHandle, SharedString, Size, Task, TitlebarOptions, Window, WindowBounds,
-    WindowControlArea, WindowOptions, canvas, div, img, point, prelude::*, px, relative, size,
+    Animation, AnimationExt, App, Application, Bounds, ClickEvent, Context, CursorStyle, FocusHandle, FontWeight,
+    KeyBinding, MouseButton, ObjectFit, PathPromptOptions, Pixels, Point, RenderImage, ScrollHandle, SharedString,
+    Size, Task, TitlebarOptions, Window, WindowBounds, WindowControlArea, WindowOptions, actions, canvas, div, img,
+    point, prelude::*, pulsating_between, px, relative, size,
 };
 use recorder::RecordingInfo;
 use scaling::{Method, Scaling};
 use session::{ModeRequest, Session, SourceState};
-use settings::{SavedSource, Settings, Sharpening};
+use settings::{SavedSource, SavedWindow, Settings, Sharpening};
 use source::{DeviceMode, SourceId, SourceInfo, SourceKind};
 use theme::{color, icon};
 use widgets::{
@@ -53,6 +54,13 @@ const TITLEBAR_HEIGHT: f32 = 36.;
 /// Windows and macOS get Spectra's own dark title bar; Linux keeps its native one.
 const CUSTOM_TITLEBAR: bool = cfg!(any(windows, target_os = "macos"));
 const FPS_CHOICES: [u32; 4] = [24, 30, 60, 120];
+
+actions!(spectra, [ToggleRecording, TakeScreenshot, ToggleFullscreen, ExitFullscreen, ToggleZoom]);
+
+/// A shortcut as the platform writes it: ⌘ on macOS, Ctrl elsewhere.
+fn shortcut(key: &str) -> String {
+    if cfg!(target_os = "macos") { format!("⌘{key}") } else { format!("Ctrl+{key}") }
+}
 
 enum Recording {
     Idle,
@@ -101,6 +109,11 @@ struct Spectra {
     /// Persistent problem (e.g. ffmpeg missing), shown in the sidebar.
     warning: Option<SharedString>,
     open_dropdown: Option<&'static str>,
+    /// Keyboard shortcuts are handled while this has focus.
+    focus: FocusHandle,
+    /// Bumped by each screenshot, to play the shutter flash.
+    flash: Option<usize>,
+    flashes: usize,
     _tasks: Vec<Task<()>>,
 }
 
@@ -129,18 +142,34 @@ impl Spectra {
             }
         });
 
-        // Closing mid-recording: finish the file instead of leaving it broken.
+        // On close: finish a recording instead of leaving it broken, and
+        // remember where the window was.
         let this = cx.entity().downgrade();
-        window.on_window_should_close(cx, move |_, cx| {
+        window.on_window_should_close(cx, move |window, cx| {
             if let Some(this) = this.upgrade() {
+                let (bounds, maximized) = match window.window_bounds() {
+                    WindowBounds::Windowed(b) => (b, false),
+                    WindowBounds::Maximized(b) | WindowBounds::Fullscreen(b) => (b, true),
+                };
                 this.update(cx, |this, _| {
                     if let (Recording::Active(_), Some(session)) = (&this.recording, &this.session) {
                         let _ = session.stop_recording().recv();
                     }
+                    this.settings.window = Some(SavedWindow {
+                        x: f32::from(bounds.origin.x),
+                        y: f32::from(bounds.origin.y),
+                        width: f32::from(bounds.size.width),
+                        height: f32::from(bounds.size.height),
+                        maximized,
+                    });
+                    settings::save(&this.settings);
                 });
             }
             true
         });
+
+        let focus = cx.focus_handle();
+        window.focus(&focus);
 
         let ffmpeg = source::ffmpeg_available();
         if ffmpeg {
@@ -178,6 +207,9 @@ impl Spectra {
             warning: (!ffmpeg)
                 .then(|| "ffmpeg was not found on PATH. Recording, capture cards and cameras need it.".into()),
             open_dropdown: None,
+            focus,
+            flash: None,
+            flashes: 0,
             _tasks: vec![on_frame, ticker],
         };
         this.refresh_sources(cx);
@@ -462,6 +494,21 @@ impl Spectra {
     fn take_screenshot(&mut self, cx: &mut Context<Self>) {
         let Some(session) = &self.session else { return };
         let done = session.screenshot(self.output_path("png"));
+        // A shutter flash over the preview, gone after a moment.
+        self.flashes += 1;
+        self.flash = Some(self.flashes);
+        let flash = self.flashes;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(400)).await;
+            this.update(cx, |this, cx| {
+                if this.flash == Some(flash) {
+                    this.flash = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
         let result = cx
             .background_executor()
             .spawn(async move { done.recv().unwrap_or_else(|_| Err(anyhow::anyhow!("the screenshot was lost"))) });
@@ -534,6 +581,11 @@ impl Spectra {
             self.open_dropdown == Some(id),
             viewport,
             |this: &mut Self, open, cx| {
+                // Opening the source menus re-lists sources, so a device
+                // plugged in since shows up.
+                if matches!(open, Some("source" | "kind")) && this.open_dropdown != open {
+                    this.refresh_sources(cx);
+                }
                 this.open_dropdown = open;
                 cx.notify();
             },
@@ -653,17 +705,32 @@ impl Spectra {
             }
             _ => None,
         };
-        let placeholder = |glyph: &'static str, text: String, hex: u32| {
+        let placeholder = |icon: gpui::AnyElement, text: String, hex: u32| {
             div()
                 .size_full()
                 .flex()
                 .flex_col()
                 .items_center()
                 .justify_center()
-                .gap_3()
-                .child(div().font_family(theme::ICONS).text_size(px(28.)).text_color(color(theme::SUBTLE)).child(glyph))
+                .gap_4()
+                .child(icon)
                 .child(div().max_w(px(420.)).text_center().text_sm().text_color(color(hex)).child(text))
         };
+        // The brand mark, breathing while a source opens or waits for video.
+        let mark = |busy: bool| {
+            if busy {
+                brand_mark(44.)
+                    .with_animation(
+                        "opening",
+                        Animation::new(Duration::from_millis(1600)).repeat().with_easing(pulsating_between(0.3, 1.)),
+                        |mark, delta| mark.opacity(delta),
+                    )
+                    .into_any_element()
+            } else {
+                brand_mark(44.).opacity(0.5).into_any_element()
+            }
+        };
+        let name = self.current.as_ref().map_or("source".to_string(), |c| c.name.clone());
         let badge = || {
             div()
                 .absolute()
@@ -680,10 +747,22 @@ impl Spectra {
 
         let content = match (&state, &self.preview_image) {
             (Some(SourceState::Failed(e)), _) => placeholder(
-                icon::WARNING,
-                format!("Couldn't capture this source: {e}. Select it again to retry."),
-                theme::ERROR,
+                div()
+                    .font_family(theme::ICONS)
+                    .text_size(px(28.))
+                    .text_color(color(theme::ERROR))
+                    .child(icon::WARNING)
+                    .into_any_element(),
+                format!("Couldn't capture {name}: {e}."),
+                theme::MUTED,
             )
+            .child(ghost_button("retry", Some(icon::REFRESH), "Try again", false).on_click(cx.listener(
+                |this, _, window, cx| {
+                    if let Some(info) = this.current.clone() {
+                        this.select_source(info, window, cx);
+                    }
+                },
+            )))
             .into_any_element(),
             (Some(_), Some(image)) if !self.settings.native_zoom => {
                 img(image.clone()).size_full().object_fit(ObjectFit::Contain).into_any_element()
@@ -736,25 +815,49 @@ impl Spectra {
                     .into_any_element()
             }
             (Some(SourceState::Opening), None) => {
-                placeholder(icon::VIDEO, "Opening source…".into(), theme::MUTED).into_any_element()
+                placeholder(mark(true), format!("Opening {name}…"), theme::MUTED).into_any_element()
             }
-            (Some(_), None) => placeholder(icon::VIDEO, "Waiting for video…".into(), theme::MUTED).into_any_element(),
-            (None, _) => placeholder(icon::VIDEO, "Choose a source".into(), theme::MUTED).into_any_element(),
+            (Some(_), None) => {
+                placeholder(mark(true), format!("Waiting for video from {name}…"), theme::MUTED).into_any_element()
+            }
+            (None, _) => placeholder(mark(false), "Choose a source".into(), theme::MUTED).into_any_element(),
         };
 
+        let fullscreen = window.is_fullscreen();
+        let fullscreen_button = div()
+            .id("fullscreen")
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .font_family(theme::ICONS)
+            .text_xs()
+            .text_color(color(theme::MUTED))
+            .cursor_pointer()
+            .hover(|s| s.text_color(color(0xffffff)))
+            .child(if fullscreen { icon::EXIT_FULLSCREEN } else { icon::FULLSCREEN })
+            .tooltip(Tooltip::text(if fullscreen {
+                "Exit full screen (Esc)"
+            } else {
+                "Full screen (F11, or double-click)"
+            }))
+            .on_click(|_, window, _| window.toggle_fullscreen());
+        let zoom_tip = format!("Fit or 1:1 ({})", shortcut("1"));
         let zoom_toggle = div()
             .absolute()
             .bottom_3()
             .left_3()
             .flex()
+            .items_center()
             .p_0p5()
             .gap_0p5()
             .rounded_md()
             .bg(color(0x000000).opacity(0.65))
+            .child(fullscreen_button)
             .children([(false, "Fit"), (true, "1:1")].map(|(native, label)| {
                 let selected = self.settings.native_zoom == native;
                 div()
                     .id(label)
+                    .tooltip(Tooltip::text(zoom_tip.clone()))
                     .px_2()
                     .py_0p5()
                     .rounded_sm()
@@ -796,12 +899,18 @@ impl Spectra {
 
         let bounds = self.preview_bounds.clone();
         div()
+            .id("preview")
             .relative()
             .w_full()
             .flex_1()
             .min_h(px(200.))
             .overflow_hidden()
             .bg(color(0x000000))
+            .on_click(|e: &ClickEvent, window, _| {
+                if e.click_count() == 2 {
+                    window.toggle_fullscreen();
+                }
+            })
             // Measure the area so frames can be rendered at its exact pixel size.
             .child(canvas(move |b: Bounds<Pixels>, _, _| bounds.set(b.size), |_, _, _, _| {}).absolute().size_full())
             .child(content)
@@ -822,6 +931,13 @@ impl Spectra {
                 )
             })
             .when_some(stats, |this, stats| this.child(stats).child(zoom_toggle))
+            .when_some(self.flash, |this, flash| {
+                this.child(div().absolute().top_0().left_0().size_full().bg(color(0xffffff)).with_animation(
+                    ("flash", flash),
+                    Animation::new(Duration::from_millis(350)),
+                    |flash, delta| flash.opacity(0.35 * (1. - delta)),
+                ))
+            })
     }
 
     /// Record / Screenshot buttons plus the recording summary and last result,
@@ -861,6 +977,7 @@ impl Spectra {
 
         let record_button = div()
             .id("record")
+            .tooltip(Tooltip::text(format!("Record or stop ({})", shortcut("R"))))
             .h(px(32.))
             .flex_1()
             .flex()
@@ -903,7 +1020,7 @@ impl Spectra {
             });
 
         let screenshot = icon_button("screenshot", icon::CAMERA, self.live_size().is_none())
-            .tooltip(Tooltip::text("Screenshot"))
+            .tooltip(Tooltip::text(format!("Screenshot ({})", shortcut("S"))))
             .when(self.live_size().is_some(), |this| {
                 this.on_click(cx.listener(|this, _, _, cx| this.take_screenshot(cx)))
             });
@@ -1366,30 +1483,72 @@ fn saved_status(result: anyhow::Result<PathBuf>, what: &str) -> Status {
 impl Render for Spectra {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
+        // Full screen shows the video alone.
+        let fullscreen = window.is_fullscreen();
         div()
+            .key_context("Spectra")
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &ToggleRecording, _, cx| {
+                if !matches!(this.recording, Recording::Idle) || this.can_record() {
+                    this.toggle_recording(cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &TakeScreenshot, _, cx| {
+                if this.live_size().is_some() {
+                    this.take_screenshot(cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleZoom, _, cx| {
+                let native = !this.settings.native_zoom;
+                this.set_native_zoom(native, cx);
+            }))
+            .on_action(|_: &ToggleFullscreen, window, _| window.toggle_fullscreen())
+            .on_action(cx.listener(|this, _: &ExitFullscreen, window, cx| {
+                this.open_dropdown = None;
+                if window.is_fullscreen() {
+                    window.toggle_fullscreen();
+                }
+                cx.notify();
+            }))
             .size_full()
             .flex()
             .flex_col()
             .bg(color(theme::BG))
             .text_color(color(theme::TEXT))
-            .when(CUSTOM_TITLEBAR, |this| this.child(self.render_titlebar(window)))
+            .when(CUSTOM_TITLEBAR && !fullscreen, |this| this.child(self.render_titlebar(window)))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .child(div().flex_1().min_w_0().flex().flex_col().child(self.render_preview(window, cx)))
-                    .child(self.render_sidebar(viewport, cx)),
+                    .when(!fullscreen, |this| this.child(self.render_sidebar(viewport, cx))),
             )
     }
 }
 
 fn main() {
     Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(1180.), px(760.)), cx);
+        cx.bind_keys([
+            KeyBinding::new("secondary-r", ToggleRecording, None),
+            KeyBinding::new("secondary-s", TakeScreenshot, None),
+            KeyBinding::new("secondary-1", ToggleZoom, None),
+            KeyBinding::new("f11", ToggleFullscreen, None),
+            KeyBinding::new("escape", ExitFullscreen, None),
+        ]);
+
+        // Where the window was last time, if that's still on a connected display.
+        let default = Bounds::centered(None, size(px(1180.), px(760.)), cx);
+        let window_bounds = settings::load()
+            .window
+            .map(|w| (Bounds::new(point(px(w.x), px(w.y)), size(px(w.width), px(w.height))), w.maximized))
+            .filter(|(b, _)| cx.displays().iter().any(|d| d.bounds().intersects(b)))
+            .map_or(WindowBounds::Windowed(default), |(b, maximized)| {
+                if maximized { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) }
+            });
         cx.open_window(
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_bounds: Some(window_bounds),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Spectra".into()),
                     appears_transparent: CUSTOM_TITLEBAR,

@@ -49,12 +49,13 @@ pub mod icon {
     pub const OPEN: &str = "↗";
     pub const CHECK: &str = "✓";
     pub const REFRESH: &str = "↻";
-    pub const VIDEO: &str = "▶";
     pub const WARNING: &str = "⚠";
     pub const MINIMIZE: &str = "—";
     pub const MAXIMIZE: &str = "□";
     pub const RESTORE: &str = "❐";
     pub const CLOSE: &str = "✕";
+    pub const FULLSCREEN: &str = "⛶";
+    pub const EXIT_FULLSCREEN: &str = "⛶";
 }
 
 #[cfg(windows)]
@@ -66,12 +67,13 @@ pub mod icon {
     pub const OPEN: &str = "\u{E8A7}";
     pub const CHECK: &str = "\u{E73E}";
     pub const REFRESH: &str = "\u{E72C}";
-    pub const VIDEO: &str = "\u{E714}";
     pub const WARNING: &str = "\u{E7BA}";
     pub const MINIMIZE: &str = "\u{E921}";
     pub const MAXIMIZE: &str = "\u{E922}";
     pub const RESTORE: &str = "\u{E923}";
     pub const CLOSE: &str = "\u{E8BB}";
+    pub const FULLSCREEN: &str = "\u{E740}";
+    pub const EXIT_FULLSCREEN: &str = "\u{E73F}";
 }
 
 pub fn accent() -> Hsla {

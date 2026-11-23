@@ -21,6 +21,18 @@ pub struct Settings {
     pub output_dir: Option<PathBuf>,
     /// Sidebar sections the user has expanded (all start collapsed).
     pub expanded: Vec<String>,
+    /// Where the window was when Spectra last closed.
+    pub window: Option<SavedWindow>,
+}
+
+/// The window's position and size (logical pixels), and whether it was maximised.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct SavedWindow {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub maximized: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +45,7 @@ impl Default for Settings {
             record: RecordSettings::default(),
             output_dir: None,
             expanded: Vec::new(),
+            window: None,
         }
     }
 }
