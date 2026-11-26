@@ -1,7 +1,7 @@
 //! Recording: a writer thread with its own clock feeds the newest frame to the
 //! encoder at a constant frame rate. When the source sends no new frame (an
-//! idle desktop), the last one is repeated, so the video's timing always
-//! matches real time.
+//! idle desktop), the last one is repeated, so the video's timing matches real
+//! time unless the encoder can't keep up.
 
 use std::{
     path::PathBuf,
@@ -53,9 +53,12 @@ impl Recorder {
             let (latest, stop, written) = (latest.clone(), stop.clone(), written.clone());
             let started = info.started;
             let frame_time = Duration::from_secs_f64(1.0 / settings.fps as f64);
+            let fps = u64::from(settings.fps);
             thread::Builder::new().name("recorder".into()).spawn(move || -> Result<PathBuf> {
                 let mut current = first;
+                // Frame slots the clock has passed, and frames actually written.
                 let mut count: u64 = 0;
+                let mut frames: u64 = 0;
                 loop {
                     if let Some(frame) = latest.lock().unwrap().take() {
                         current = frame;
@@ -72,11 +75,19 @@ impl Recorder {
                         fitted = fit_into(&current, size);
                         &fitted
                     };
-                    for _ in 0..n {
+                    // An encoder slower than real time would get a bigger batch
+                    // each tick, and stopping would wait for all of it. Catch up
+                    // by a second at most and skip the rest: the video jumps
+                    // ahead, and the UI already says the encoder can't keep up.
+                    for _ in 0..n.min(fps) {
                         encoder.write_frame(data)?;
+                        frames += 1;
+                        written.store(frames, Ordering::Relaxed);
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
                     }
                     count += n;
-                    written.store(count, Ordering::Relaxed);
 
                     if stop.load(Ordering::Relaxed) {
                         break;
