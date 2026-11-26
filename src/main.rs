@@ -1489,7 +1489,6 @@ impl Render for Spectra {
         let fullscreen = window.is_fullscreen();
         div()
             .key_context("Spectra")
-            .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &ToggleRecording, _, cx| {
                 if !matches!(this.recording, Recording::Idle) || this.can_record() {
                     this.toggle_recording(cx);
@@ -1519,7 +1518,12 @@ impl Render for Spectra {
             .text_color(color(theme::TEXT))
             .when(CUSTOM_TITLEBAR && !fullscreen, |this| this.child(self.render_titlebar(window)))
             .child(
+                // Focus is tracked below the title bar, not on the whole window:
+                // clicking a focusable element marks the mouse-down as handled,
+                // and on Windows a handled mouse-down on the title bar never
+                // reaches the system, which then doesn't start moving the window.
                 div()
+                    .track_focus(&self.focus)
                     .flex_1()
                     .min_h_0()
                     .flex()
