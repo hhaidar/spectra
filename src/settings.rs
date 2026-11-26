@@ -110,14 +110,32 @@ impl Settings {
     }
 }
 
-fn default_output_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE")
-        .map(|home| PathBuf::from(home).join("Videos").join("Spectra"))
-        .unwrap_or_else(|| PathBuf::from("."))
+fn home() -> Option<PathBuf> {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var).filter(|home| !home.is_empty()).map(PathBuf::from)
 }
 
+/// The user's videos folder: Videos, or Movies on macOS. Spectra.app starts
+/// in `/`, so the current directory is no fallback there.
+fn default_output_dir() -> PathBuf {
+    let videos = if cfg!(target_os = "macos") { "Movies" } else { "Videos" };
+    home().map(|home| home.join(videos).join("Spectra")).unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Each platform's place for app settings: %APPDATA% on Windows,
+/// ~/Library/Application Support on macOS, $XDG_CONFIG_HOME or ~/.config on Linux.
 fn path() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("APPDATA")?).join("Spectra").join("settings.json"))
+    let dir = if cfg!(windows) {
+        PathBuf::from(std::env::var_os("APPDATA")?)
+    } else if cfg!(target_os = "macos") {
+        home()?.join("Library").join("Application Support")
+    } else {
+        match std::env::var_os("XDG_CONFIG_HOME").filter(|dir| !dir.is_empty()) {
+            Some(dir) => PathBuf::from(dir),
+            None => home()?.join(".config"),
+        }
+    };
+    Some(dir.join("Spectra").join("settings.json"))
 }
 
 pub fn load() -> Settings {
