@@ -153,6 +153,11 @@ impl WgcCapture {
         };
 
         let content = frame.ContentSize()?;
+        // A window can report no content for a moment (while minimizing, say);
+        // resizing the buffers to nothing would fail and end the capture.
+        if content.Width <= 0 || content.Height <= 0 {
+            return Ok(None);
+        }
         if content.Width != self.pool_size.Width || content.Height != self.pool_size.Height {
             // The window was resized: resize the buffers (takes effect next frame).
             self.pool.Recreate(&self.device, PIXEL_FORMAT, BUFFERS, content)?;
